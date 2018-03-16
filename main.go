@@ -1,11 +1,16 @@
 package main
 
 import (
-	"time"
-	"github.com/streadway/amqp"
+	consul "github.com/hashicorp/consul/api"
 	"fmt"
-	"gopkg.in/mgo.v2"
-	"github.com/tangxuyao/mongo"
+	"strings"
+	"github.com/micro/go-micro"
+	"proto/asylum"
+	"proto/crm"
+	"proto/gm"
+	"golang.org/x/net/context"
+	"time"
+	"log"
 )
 
 func failOnError(err error) {
@@ -15,41 +20,56 @@ func failOnError(err error) {
 }
 
 func main() {
-
-	conn, err := amqp.Dial("amqp://127.0.0.1:5672/")
+	config := consul.DefaultConfig()
+	config.Address = "localhost:8500"
+	cli, err := consul.NewClient(config)
 	failOnError(err)
 
-	ch, err := conn.Channel()
-	failOnError(err)
-	defer ch.Close()
+	service := micro.NewService(micro.Name("ConsulMonitorService"))
+	service.Init()
 
-	q, err := ch.QueueDeclare(
-		"actors",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	failOnError(err)
-
-	ms, err := mgo.Dial("")
-	failOnError(err)
-
-	colActors := ms.DB("crm").C("actors")
+	asylum := asylum_api.NewAsylumServiceClient("AsylumService", service.Client())
+	crm := crm_api.NewCRMServiceClient("crmService", service.Client())
+	game := gm_api.NewGameServiceClient("GameService", service.Client())
 
 	for {
-		var results []mongo.Charactor
-		colActors.Find(nil).All(&results)
+		fmt.Println(" ")
+		fmt.Println("Show Service List:")
+		fmt.Println(" ")
+		list, err := cli.Agent().Services()
+		failOnError(err)
 
-		if len(results) > 0 {
+		for k, v := range list {
+			if 0 == strings.Compare(k, "consul") {
+				continue
+			}
 
+			fmt.Printf("[ %s ] %s\n", v.Service, v.ID)
 
+			if v.Service == "AsylumService" {
+				_, err := asylum.AsylumPing(context.TODO(), &asylum_api.AsylumPingReq{})
+				if err != nil {
+					log.Println(err)
+					cli.Agent().ServiceDeregister(k)
+				}
+			}
+
+			if v.Service == "crmService" {
+				_, err := crm.CRMPing(context.TODO(), &crm_api.CRMPingReq{})
+				if err != nil {
+					log.Println(err)
+					cli.Agent().ServiceDeregister(k)
+				}
+			}
+
+			if v.Service == "GameService" {
+				_, err := game.PingGame(context.TODO(), &gm_api.PingGameReq{})
+				if err != nil {
+					log.Println(err)
+					cli.Agent().ServiceDeregister(v.ID)
+				}
+			}
 		}
-
-
-		fmt.Println("actor_hold_service running..")
-		time.Sleep(time.Second)
+		time.Sleep(time.Second * 5)
 	}
-
 }
