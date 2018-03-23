@@ -8,6 +8,7 @@ import (
 	"proto/asylum"
 	"proto/crm"
 	"proto/gm"
+	"proto/adventure"
 	"golang.org/x/net/context"
 	"time"
 	"log"
@@ -31,6 +32,7 @@ func main() {
 	asylum := asylum_api.NewAsylumServiceClient("AsylumService", service.Client())
 	crm := crm_api.NewCRMServiceClient("crmService", service.Client())
 	game := gm_api.NewGameServiceClient("GameService", service.Client())
+	adventure := adventrue_api.NewAdventureServiceClient("AdventureService", service.Client())
 
 	for {
 		fmt.Println(" ")
@@ -64,6 +66,14 @@ func main() {
 
 			if v.Service == "GameService" {
 				_, err := game.PingGame(context.TODO(), &gm_api.PingGameReq{})
+				if err != nil {
+					log.Println(err)
+					cli.Agent().ServiceDeregister(v.ID)
+				}
+			}
+
+			if v.Service == "AdventureService" {
+				_, err := adventure.AdventurePing(context.TODO(), & adventrue_api.AdventurePingReq{})
 				if err != nil {
 					log.Println(err)
 					cli.Agent().ServiceDeregister(v.ID)
